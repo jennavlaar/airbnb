@@ -9,3 +9,7 @@ Authors:
 * Hiten Mahalwar
 * Hannah Son
 * Jenna Vlaar
+
+## Running the Code
+    pip install -r requirements.txt
+    python main.py
