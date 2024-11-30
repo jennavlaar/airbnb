@@ -1,94 +1,107 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
-import gzip
-import shutil
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import numpy as np
 
-compressed_file_path = "data/listings.csv.gz"
-extracted_file_path = "data/newzealandlistings.csv"
+# Load datasets
+train_file = "data/newzealandlistings_train.csv"
+test_file = "data/newzealandlistings_test.csv"
+train_df = pd.read_csv(train_file)
+test_df = pd.read_csv(test_file)
 
-if not os.path.exists(extracted_file_path):
-    print("Extracting compressed file...")
-    os.makedirs("data", exist_ok=True)  # Ensure the data directory exists
-    with gzip.open(compressed_file_path, 'rb') as f_in:
-        with open(extracted_file_path, 'wb') as f_out:
-            shutil.copyfileobj(f_in, f_out)
-    print(f"File extracted to {extracted_file_path}")
+# Data Cleaning
+print("\nCleaning data...")
+def clean_data(df):
+    # Remove duplicates
+    df = df.drop_duplicates()
 
-# Load dataset
-print("Loading dataset...")
-df = pd.read_csv(extracted_file_path)
+    # Handle missing values
+    df = df.dropna(subset=features + [target])
 
-print("Dataset Overview:")
-print(df.info())
-print("\nBasic Statistics:")
-print(df.describe())
+    # Convert price to numeric (remove $ sign if present)
+    df['price'] = df['price'].replace('[\$,]', '', regex=True).astype(float)
 
-# Drop duplicates
-df.drop_duplicates(inplace=True)
+    # Remove outliers in price (e.g., prices below $10 or above $5000)
+    df = df[(df['price'] > 10) & (df['price'] < 5000)]
 
-# Drop columns with less than 10% non-null values
-threshold = 0.1 * len(df)
-df = df.dropna(thresh=threshold, axis=1)
+    # Create new features (e.g., beds per bedroom)
+    df['beds_per_bedroom'] = df['beds'] / df['bedrooms']
+    df['beds_per_bedroom'].fillna(0, inplace=True)  # Handle divisions by zero
+    
+    return df
 
-# Standardize column names
-df.columns = [col.strip().lower().replace(" ", "_") for col in df.columns]
+# Features and target variable
+features = ['accommodates', 'bedrooms', 'bathrooms', 'beds']
+target = 'price'
 
-# Clean and convert 'price' column
-if 'price' in df.columns:
-    df['price'] = df['price'].str.replace('[\$,]', '', regex=True).astype(float)
+# Clean train and test datasets
+train_df = clean_data(train_df)
+test_df = clean_data(test_df)
 
-# Fill missing values
-# Example: Fill categorical data with "unknown"
-if 'host_response_time' in df.columns:
-    df['host_response_time'].fillna('unknown', inplace=True)
+# Log-transform the price to stabilize variance
+train_df['price'] = np.log1p(train_df['price'])
+test_df['price'] = np.log1p(test_df['price'])
 
-# Fill numerical data with median
-for col in df.select_dtypes(include=['float64', 'int64']).columns:
-    df[col].fillna(df[col].median(), inplace=True)
+# Separate features and target
+X_train, X_val, y_train, y_val = train_test_split(train_df[features], train_df[target], test_size=0.2, random_state=42)
+X_test = test_df[features]
+y_test = test_df[target]
 
-# Drop rows with missing critical data
-if 'price' in df.columns and 'property_type' in df.columns:
-    df = df.dropna(subset=['price', 'property_type'])
+# Hyperparameter tuning
+print("\nOptimizing model...")
+param_grid = {
+    'n_estimators': [100, 200, 300],
+    'max_depth': [None, 10, 20],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+model = GridSearchCV(RandomForestRegressor(random_state=42), param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
+model.fit(X_train, y_train)
 
-# Example: Convert date columns to datetime (if applicable)
-date_columns = [col for col in df.columns if "date" in col]
-for col in date_columns:
-    df[col] = pd.to_datetime(df[col], errors='coerce')
+# Best model
+print(f"Best parameters: {model.best_params_}")
+best_model = model.best_estimator_
 
-# Create output directories if they don't exist
-os.makedirs("output/visualizations", exist_ok=True)
+# Evaluate model
+print("\nEvaluating model...")
+val_predictions = best_model.predict(X_val)
+test_predictions = best_model.predict(X_test)
 
-# Save cleaned data
-cleaned_file_path = "output/cleaned_data.csv"
-df.to_csv(cleaned_file_path, index=False)
-print(f"Cleaned data saved to {cleaned_file_path}")
+# Metrics
+val_mse = mean_squared_error(y_val, val_predictions)
+val_mae = mean_absolute_error(y_val, val_predictions)
+val_r2 = r2_score(y_val, val_predictions)
 
-sns.set_theme(style="whitegrid")
+test_mse = mean_squared_error(y_test, test_predictions)
+test_mae = mean_absolute_error(y_test, test_predictions)
+test_r2 = r2_score(y_test, test_predictions)
 
-# Price Distribution Histogram
-if 'price' in df.columns:
-    plt.figure(figsize=(10, 6))
-    sns.histplot(data=df, x="price", kde=True, color="blue")
-    plt.title("Price Distribution")
-    plt.savefig("output/visualizations/price_distribution.png")
-    plt.close()
+print(f"Validation MSE: {val_mse:.2f}, MAE: {val_mae:.2f}, R2: {val_r2:.2f}")
+print(f"Test MSE: {test_mse:.2f}, MAE: {test_mae:.2f}, R2: {test_r2:.2f}")
 
-# Listings by Region Bar Chart
-if 'region_name' in df.columns:
-    region_counts = df['region_name'].value_counts()
-    plt.figure(figsize=(10, 6))
-    sns.barplot(x=region_counts.index, y=region_counts.values, palette="viridis")
-    plt.title("Listings by Region")
-    plt.xticks(rotation=45)
-    plt.savefig("output/visualizations/listings_by_region.png")
-    plt.close()
+# Save a visualization of feature importance
+plt.figure(figsize=(10, 6))
+feature_importance = pd.Series(best_model.feature_importances_, index=features).sort_values(ascending=False)
+sns.barplot(x=feature_importance.values, y=feature_importance.index, palette="viridis")
+plt.title("Feature Importance")
+plt.xlabel("Importance Score")
+plt.ylabel("Feature")
+for i, value in enumerate(feature_importance.values):
+    plt.text(value, i, f"{value:.2f}", va='center')
+plt.tight_layout()
+plt.savefig("output/visualizations/feature_importance.png")
+plt.close()
+print("Feature importance visualization saved.")
 
-print("Visualizations saved to output/visualizations/")
-
-# Basic Analysis Example
-if 'price' in df.columns:
-    print("\nPrice Analysis:")
-    print(f"Average Price: {df['price'].mean():.2f}")
-    print(f"Median Price: {df['price'].median():.2f}")
+# Residual Plot
+plt.figure(figsize=(10, 6))
+residuals = np.expm1(y_test) - np.expm1(test_predictions)
+sns.histplot(residuals, kde=True, color="blue", bins=30)
+plt.title("Residuals Distribution")
+plt.xlabel("Residuals")
+plt.ylabel("Frequency")
+plt.savefig("output/visualizations/residuals_distribution.png")
+plt.close()
