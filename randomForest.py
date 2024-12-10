@@ -98,6 +98,6 @@ sns.barplot(
 )
 
 plt.title("Feature Importance")
-plt.savefig("output/visualizations/feature_importance.png")
+plt.savefig("output/visualizations/randomForest_feature_importance.png")
 plt.close()
 print("Feature importance visualization saved.")
