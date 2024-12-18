@@ -73,7 +73,7 @@ X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, 
 
 # --- LightGBM Model Training ---
 print("\nTraining LightGBM model...")
-warnings.filterwarnings('ignore') # suppress general warnings
+# warnings.filterwarnings('ignore') # suppress general warnings
 
 lgb_model = lgb.LGBMRegressor(objective='regression', random_state=42, verbose=-1)
 
@@ -87,10 +87,8 @@ param_grid = {
     'feature_fraction': [0.8, 1.0],
     'num_leaves': [15, 31]
 }
-
-grid_search = GridSearchCV(lgb_model, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
+grid_search = GridSearchCV(lgb_model, param_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=1)
 grid_search.fit(X_train, y_train)
-
 # Best model
 model = grid_search.best_estimator_
 print(f"Best Parameters: {grid_search.best_params_}")

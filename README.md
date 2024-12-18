@@ -13,5 +13,5 @@ Authors:
 ## Running the Code
     Download listings.csv.gz, reviews.csv.gz, calendar.csv.gz and neighbourhoods.csv from https://insideairbnb.com/get-the-data/ for a city
     Place files in /data
-    pip install -r requirements.txt
+    pip install -r requirements.txt # use python 3.10 to prevent pip issues
     python main.py

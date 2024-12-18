@@ -94,7 +94,7 @@ sns.barplot(
     hue=feature_importance.index, 
     dodge=False, 
     palette="viridis", 
-    legend=False
+    # legend=False
 )
 
 plt.title("Feature Importance")
